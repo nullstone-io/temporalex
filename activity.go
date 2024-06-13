@@ -2,9 +2,6 @@ package temporalex
 
 import (
 	"context"
-	"fmt"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
@@ -19,15 +16,11 @@ func DefaultActivityOptions() workflow.ActivityOptions {
 	}
 }
 
-type ActivityInput interface {
-	SpanAttributes() []attribute.KeyValue
-}
-
 type ActivityRunFunc[TConfig any, TInput any, TResult any] func(ctx context.Context, cfg TConfig, input TInput) (TResult, error)
 type PostActivityFunc[TResult any] func(ctx context.Context, result TResult, err error) (TResult, error)
 type HandleActivityFunc[TResult any] func(wctx workflow.Context, result TResult, err error) (TResult, error)
 
-type Activity[TConfig any, TInput ActivityInput, TResult any] struct {
+type Activity[TConfig any, TInput any, TResult any] struct {
 	Name    string
 	Options workflow.ActivityOptions
 	Run     ActivityRunFunc[TConfig, TInput, TResult]
@@ -51,20 +44,6 @@ func (a Activity[TConfig, TInput, TResult]) Register(cfg TConfig, registry worke
 
 func (a Activity[TConfig, TInput, TResult]) run(cfg TConfig) func(ctx context.Context, input TInput) (TResult, error) {
 	return func(ctx context.Context, input TInput) (TResult, error) {
-		var span trace.Span
-		aInfo := activity.GetInfo(ctx)
-		ctx, span = tracer.Start(ctx, fmt.Sprintf("%s.Run", a.Name),
-			trace.WithSpanKind(trace.SpanKindInternal),
-			trace.WithAttributes(append(
-				input.SpanAttributes(),
-				attribute.String("temporal.workflow.id", aInfo.WorkflowExecution.ID),
-				attribute.String("temporal.workflow.type", aInfo.WorkflowType.Name),
-				attribute.String("temporal.activity.id", aInfo.ActivityID),
-				attribute.String("temporal.activity.type", aInfo.ActivityType.Name),
-			)...),
-		)
-		defer span.End()
-
 		result, err := a.Run(ctx, cfg, input)
 		if a.PostRun != nil {
 			return a.PostRun(ctx, result, err)
