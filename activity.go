@@ -27,9 +27,11 @@ type ActivityRunFunc[TConfig any, TInput any, TResult any] func(ctx context.Cont
 type HandleResultFunc[TResult any] func(ctx context.Context, result TResult, err error) (TResult, error)
 
 type Activity[TConfig any, TInput ActivityInput, TResult any] struct {
-	Name         string
-	Options      workflow.ActivityOptions
-	Run          ActivityRunFunc[TConfig, TInput, TResult]
+	Name    string
+	Options workflow.ActivityOptions
+	Run     ActivityRunFunc[TConfig, TInput, TResult]
+	// HandleResult executes within the context of the activity and executes after Run
+	// This is most useful for mutating the result or error before returning to Temporal
 	HandleResult HandleResultFunc[TResult]
 }
 

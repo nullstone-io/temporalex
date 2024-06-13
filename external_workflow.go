@@ -10,7 +10,9 @@ type ExternalWorkflow[TInput WorkflowInput, TResult any] struct {
 	Name              string
 	TaskQueue         string
 	ParentClosePolicy enums.ParentClosePolicy
-	PostRun           PostFunc[TResult]
+	// PostRun executes immediately after child workflow
+	// This provides a way to handle/mutate the result or error
+	PostRun PostFunc[TResult]
 }
 
 func (w ExternalWorkflow[TInput, TResult]) DoChild(wctx workflow.Context, input TInput) (TResult, error) {

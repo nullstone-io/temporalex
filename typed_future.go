@@ -8,6 +8,16 @@ type TypedFuture[T any] struct {
 	Err    error
 }
 
+func (f TypedFuture[T]) AddToSelector(selector workflow.Selector, fns ...func(f TypedFuture[T]) T) {
+	selector.AddFuture(f.Future, func(_ workflow.Future) {
+		for _, fn := range fns {
+			if fn != nil {
+				fn(f)
+			}
+		}
+	})
+}
+
 func ResolvedFuture[T any](wctx workflow.Context, t T, err error) TypedFuture[T] {
 	future, setter := workflow.NewFuture(wctx)
 	setter.Set(t, err)
