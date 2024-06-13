@@ -18,17 +18,17 @@ func (f TypedFuture[T]) AddToSelector(selector workflow.Selector, fns ...func(f 
 	})
 }
 
-func ResolvedFuture[T any](wctx workflow.Context, t T, err error) TypedFuture[T] {
+func ResolvedFuture[T any](wctx workflow.Context, result T, err error) TypedFuture[T] {
 	future, setter := workflow.NewFuture(wctx)
-	setter.Set(t, err)
+	setter.Set(result, err)
 	return TypedFuture[T]{
 		Future: future,
-		Result: t,
+		Result: result,
 		Err:    err,
 	}
 }
 
-type PostFunc[T any] func(wctx workflow.Context, t T, err error) (T, error)
+type PostFunc[T any] func(wctx workflow.Context, result T, err error) (T, error)
 
 func WrapFuture[T any](wctx workflow.Context, future workflow.Future, postFn PostFunc[T]) TypedFuture[T] {
 	wrapped, setter := workflow.NewFuture(wctx)

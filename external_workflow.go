@@ -10,9 +10,9 @@ type ExternalWorkflow[TInput WorkflowInput, TResult any] struct {
 	Name              string
 	TaskQueue         string
 	ParentClosePolicy enums.ParentClosePolicy
-	// PostRun executes immediately after child workflow
-	// This provides a way to handle/mutate the result or error
-	PostRun PostFunc[TResult]
+	// HandleResult executes after the child workflow completes
+	// This function executes in the parent workflow that called the executing child workflow
+	HandleResult HandleWorkflowFunc[TResult]
 }
 
 func (w ExternalWorkflow[TInput, TResult]) DoChild(wctx workflow.Context, input TInput) (TResult, error) {
@@ -28,8 +28,8 @@ func (w ExternalWorkflow[TInput, TResult]) DoChild(wctx workflow.Context, input 
 	})
 	var result TResult
 	err := workflow.ExecuteChildWorkflow(wctx, w.Name, input).Get(wctx, &result)
-	if w.PostRun != nil {
-		return w.PostRun(wctx, result, err)
+	if w.HandleResult != nil {
+		return w.HandleResult(wctx, result, err)
 	}
 	return result, err
 }
@@ -45,5 +45,5 @@ func (w ExternalWorkflow[TInput, TResult]) DoChildAsync(wctx workflow.Context, i
 		ParentClosePolicy:     enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
-	return WrapFuture[TResult](wctx, workflow.ExecuteChildWorkflow(wctx, w.Name, input), w.PostRun)
+	return WrapFuture[TResult](wctx, workflow.ExecuteChildWorkflow(wctx, w.Name, input), PostFunc[TResult](w.HandleResult))
 }

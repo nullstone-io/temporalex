@@ -24,15 +24,20 @@ type ActivityInput interface {
 }
 
 type ActivityRunFunc[TConfig any, TInput any, TResult any] func(ctx context.Context, cfg TConfig, input TInput) (TResult, error)
-type HandleResultFunc[TResult any] func(ctx context.Context, result TResult, err error) (TResult, error)
+type PostActivityFunc[TResult any] func(ctx context.Context, result TResult, err error) (TResult, error)
+type HandleActivityFunc[TResult any] func(wctx workflow.Context, result TResult, err error) (TResult, error)
 
 type Activity[TConfig any, TInput ActivityInput, TResult any] struct {
 	Name    string
 	Options workflow.ActivityOptions
 	Run     ActivityRunFunc[TConfig, TInput, TResult]
-	// HandleResult executes within the context of the activity and executes after Run
-	// This is most useful for mutating the result or error before returning to Temporal
-	HandleResult HandleResultFunc[TResult]
+	// PostRun executes before completing the activity
+	// This function executes inside the registered function of the activity
+	// This function is useful for finalizing execution of an activity
+	PostRun PostActivityFunc[TResult]
+	// HandleResult executes after the activity completes
+	// This function executes in the workflow that called the activity
+	HandleResult HandleActivityFunc[TResult]
 }
 
 func (a Activity[TConfig, TInput, TResult]) Register(cfg TConfig, registry worker.Registry) {
@@ -61,8 +66,8 @@ func (a Activity[TConfig, TInput, TResult]) run(cfg TConfig) func(ctx context.Co
 		defer span.End()
 
 		result, err := a.Run(ctx, cfg, input)
-		if a.HandleResult != nil {
-			return a.HandleResult(ctx, result, err)
+		if a.PostRun != nil {
+			return a.PostRun(ctx, result, err)
 		}
 		return result, err
 	}
@@ -72,6 +77,9 @@ func (a Activity[TConfig, TInput, TResult]) Do(wctx workflow.Context, input TInp
 	wctx = workflow.WithActivityOptions(wctx, a.Options)
 	var result TResult
 	err := workflow.ExecuteActivity(wctx, a.Name, input).Get(wctx, &result)
+	if a.HandleResult != nil {
+		return a.HandleResult(wctx, result, err)
+	}
 	return result, err
 }
 
@@ -83,5 +91,8 @@ func (a Activity[TConfig, TInput, TResult]) DoLocal(wctx workflow.Context, input
 	})
 	var result TResult
 	err := workflow.ExecuteLocalActivity(wctx, a.Name, input).Get(wctx, &result)
+	if a.HandleResult != nil {
+		return a.HandleResult(wctx, result, err)
+	}
 	return result, err
 }

@@ -12,6 +12,7 @@ import (
 )
 
 type RunFunc[TConfig any, TInput any, TResult any] func(wctx workflow.Context, ctx context.Context, cfg TConfig, input TInput) (TResult, error)
+type HandleWorkflowFunc[TResult any] func(wctx workflow.Context, result TResult, err error) (TResult, error)
 
 type WorkflowInput interface {
 	GetTemporalWorkflowId(name string) string
@@ -25,7 +26,13 @@ type Workflow[TConfig any, TInput WorkflowInput, TResult any] struct {
 	ParentClosePolicy enums.ParentClosePolicy
 	Activities        []Registrar[TConfig]
 	Run               RunFunc[TConfig, TInput, TResult]
-	PostRun           PostFunc[TResult]
+	// PostRun executes before completing the child workflow
+	// This function executes inside the registered function of the child workflow
+	// This function is useful for finalizing execution of a child workflow
+	PostRun PostFunc[TResult]
+	// HandleResult executes after the child workflow completes
+	// This function executes in the parent workflow that called the executing child workflow
+	HandleResult HandleWorkflowFunc[TResult]
 }
 
 func (w Workflow[TConfig, TInput, TResult]) Register(cfg TConfig, registry worker.Registry) {
@@ -53,7 +60,11 @@ func (w Workflow[TConfig, TInput, TResult]) run(cfg TConfig) func(wctx workflow.
 		)
 		defer span.End()
 
-		return w.Run(wctx, ctx, cfg, input)
+		result, err := w.Run(wctx, ctx, cfg, input)
+		if w.PostRun != nil {
+			return w.PostRun(wctx, result, err)
+		}
+		return result, err
 	}
 }
 
@@ -69,8 +80,8 @@ func (w Workflow[TConfig, TInput, TResult]) DoChild(wctx workflow.Context, input
 	})
 	var result TResult
 	err := workflow.ExecuteChildWorkflow(wctx, w.Name, input).Get(wctx, &result)
-	if w.PostRun != nil {
-		return w.PostRun(wctx, result, err)
+	if w.HandleResult != nil {
+		return w.HandleResult(wctx, result, err)
 	}
 	return result, err
 }
@@ -85,5 +96,5 @@ func (w Workflow[TConfig, TInput, TResult]) DoChildAsync(wctx workflow.Context, 
 		ParentClosePolicy:     pcp,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
-	return WrapFuture[TResult](wctx, workflow.ExecuteChildWorkflow(wctx, w.Name, input), w.PostRun)
+	return WrapFuture[TResult](wctx, workflow.ExecuteChildWorkflow(wctx, w.Name, input), PostFunc[TResult](w.HandleResult))
 }
