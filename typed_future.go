@@ -52,7 +52,7 @@ func (f *TypedFuture[T]) GetTyped(wctx workflow.Context) (T, error) {
 }
 
 func (f *TypedFuture[T]) AddToSelector(selector workflow.Selector, fns ...func(f TypedFuture[T]) T) {
-	selector.AddFuture(f, func(_ workflow.Future) {
+	selector.AddFuture(f.baseFuture, func(_ workflow.Future) {
 		for _, fn := range fns {
 			if fn != nil {
 				fn(*f)

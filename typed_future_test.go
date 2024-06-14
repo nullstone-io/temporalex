@@ -70,3 +70,28 @@ func TestNewTypedFuture(t *testing.T) {
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
 }
+
+func TestTypedFuture_AddToSelector(t *testing.T) {
+	suite := &testsuite.WorkflowTestSuite{}
+	env := suite.NewTestWorkflowEnvironment()
+
+	mainWorkflow := func(wctx workflow.Context, input any) (any, error) {
+		f1 := NewFuture[any](workflow.NewTimer(wctx, time.Second), nil)
+		f2 := NewResolvedFuture[any](wctx, "resolved", nil)
+		selector := workflow.NewSelector(wctx)
+		f1.AddToSelector(selector)
+		f2.AddToSelector(selector)
+
+		for !f1.IsReady() && !f2.IsReady() {
+			selector.Select(wctx)
+		}
+
+		return input, nil
+	}
+	env.RegisterWorkflow(mainWorkflow)
+
+	env.ExecuteWorkflow(mainWorkflow, struct{}{})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+}
