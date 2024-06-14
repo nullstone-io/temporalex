@@ -1,7 +1,10 @@
 package temporalex
 
 import (
+	"context"
+	"fmt"
 	"go.temporal.io/api/enums/v1"
+	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -46,4 +49,24 @@ func (w ExternalWorkflow[TInput, TResult]) DoChildAsync(wctx workflow.Context, i
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
 	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), w.HandleResult)
+}
+
+func (w ExternalWorkflow[TInput, TResult]) Do(ctx context.Context, temporalClient client.Client, input TInput) (TResult, error) {
+	var result TResult
+	if run, err := w.DoAsync(ctx, temporalClient, input); err != nil {
+		return result, err
+	} else if err = run.Get(ctx, &result); err != nil {
+		return result, fmt.Errorf("error in external workflow: %w", err)
+	}
+	return result, nil
+}
+
+func (w ExternalWorkflow[TInput, TResult]) DoAsync(ctx context.Context, temporalClient client.Client, input TInput) (client.WorkflowRun, error) {
+	opts := client.StartWorkflowOptions{
+		ID:                    input.GetTemporalWorkflowId(w.Name),
+		TaskQueue:             w.TaskQueue,
+		RetryPolicy:           &temporal.RetryPolicy{MaximumAttempts: 1},
+		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
+	}
+	return temporalClient.ExecuteWorkflow(ctx, opts, w.Name, input)
 }
