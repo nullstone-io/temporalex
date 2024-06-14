@@ -12,7 +12,7 @@ type ExternalWorkflow[TInput WorkflowInput, TResult any] struct {
 	ParentClosePolicy enums.ParentClosePolicy
 	// HandleResult executes after the child workflow completes
 	// This function executes in the parent workflow that called the executing child workflow
-	HandleResult HandleWorkflowFunc[TResult]
+	HandleResult OnResolvedFunc[TResult]
 }
 
 func (w ExternalWorkflow[TInput, TResult]) DoChild(wctx workflow.Context, input TInput) (TResult, error) {
@@ -34,7 +34,7 @@ func (w ExternalWorkflow[TInput, TResult]) DoChild(wctx workflow.Context, input 
 	return result, err
 }
 
-func (w ExternalWorkflow[TInput, TResult]) DoChildAsync(wctx workflow.Context, input TInput) TypedFuture[TResult] {
+func (w ExternalWorkflow[TInput, TResult]) DoChildAsync(wctx workflow.Context, input TInput) *TypedFuture[TResult] {
 	pcp := w.ParentClosePolicy
 	if pcp == 0 {
 		pcp = enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL
@@ -45,5 +45,5 @@ func (w ExternalWorkflow[TInput, TResult]) DoChildAsync(wctx workflow.Context, i
 		ParentClosePolicy:     enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
-	return WrapFuture[TResult](wctx, workflow.ExecuteChildWorkflow(wctx, w.Name, input), PostFunc[TResult](w.HandleResult))
+	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), w.HandleResult)
 }

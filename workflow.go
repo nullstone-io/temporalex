@@ -12,7 +12,6 @@ import (
 )
 
 type RunFunc[TConfig any, TInput any, TResult any] func(wctx workflow.Context, ctx context.Context, cfg TConfig, input TInput) (TResult, error)
-type HandleWorkflowFunc[TResult any] func(wctx workflow.Context, result TResult, err error) (TResult, error)
 
 type WorkflowInput interface {
 	GetTemporalWorkflowId(name string) string
@@ -29,10 +28,10 @@ type Workflow[TConfig any, TInput WorkflowInput, TResult any] struct {
 	// PostRun executes before completing the child workflow
 	// This function executes inside the registered function of the child workflow
 	// This function is useful for finalizing execution of a child workflow
-	PostRun PostFunc[TResult]
+	PostRun OnResolvedFunc[TResult]
 	// HandleResult executes after the child workflow completes
 	// This function executes in the parent workflow that called the executing child workflow
-	HandleResult HandleWorkflowFunc[TResult]
+	HandleResult OnResolvedFunc[TResult]
 }
 
 func (w Workflow[TConfig, TInput, TResult]) Register(cfg TConfig, registry worker.Registry) {
@@ -86,7 +85,7 @@ func (w Workflow[TConfig, TInput, TResult]) DoChild(wctx workflow.Context, input
 	return result, err
 }
 
-func (w Workflow[TConfig, TInput, TResult]) DoChildAsync(wctx workflow.Context, input TInput) TypedFuture[TResult] {
+func (w Workflow[TConfig, TInput, TResult]) DoChildAsync(wctx workflow.Context, input TInput) *TypedFuture[TResult] {
 	pcp := w.ParentClosePolicy
 	if pcp == 0 {
 		pcp = enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL
@@ -96,5 +95,5 @@ func (w Workflow[TConfig, TInput, TResult]) DoChildAsync(wctx workflow.Context, 
 		ParentClosePolicy:     pcp,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
-	return WrapFuture[TResult](wctx, workflow.ExecuteChildWorkflow(wctx, w.Name, input), PostFunc[TResult](w.HandleResult))
+	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), w.HandleResult)
 }
