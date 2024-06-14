@@ -12,7 +12,9 @@ type ExternalActivity[TInput any, TResult any] struct {
 }
 
 func (a ExternalActivity[TInput, TResult]) Do(wctx workflow.Context, input TInput) (TResult, error) {
-	wctx = workflow.WithActivityOptions(wctx, a.Options)
+	opts := a.Options
+	opts.TaskQueue = a.TaskQueue
+	wctx = workflow.WithActivityOptions(wctx, opts)
 	var result TResult
 	err := workflow.ExecuteActivity(wctx, a.Name, input).Get(wctx, &result)
 	if a.HandleResult != nil {
