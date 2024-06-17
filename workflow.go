@@ -13,6 +13,8 @@ import (
 )
 
 type RunFunc[TConfig any, TInput any, TResult any] func(wctx workflow.Context, ctx context.Context, cfg TConfig, input TInput) (TResult, error)
+type PostRunFunc[TInput any, TResult any] func(wctx workflow.Context, input TInput, result TResult, err error) (TResult, error)
+type HandleWorkflowFunc[TInput any, TResult any] func(wctx workflow.Context, input TInput, result TResult, err error) (TResult, error)
 
 var _ Registrar[stub] = Workflow[stub, WorkflowInput, any]{}
 
@@ -25,10 +27,10 @@ type Workflow[TConfig any, TInput WorkflowInput, TResult any] struct {
 	// PostRun executes before completing the child workflow
 	// This function executes inside the registered function of the child workflow
 	// This function is useful for finalizing execution of a child workflow
-	PostRun OnResolvedFunc[TResult]
+	PostRun PostRunFunc[TInput, TResult]
 	// HandleResult executes after the child workflow completes
 	// This function executes in the parent workflow that called the executing child workflow
-	HandleResult OnResolvedFunc[TResult]
+	HandleResult HandleWorkflowFunc[TInput, TResult]
 }
 
 func (w Workflow[TConfig, TInput, TResult]) Register(cfg TConfig, registry worker.Registry) {
@@ -58,7 +60,7 @@ func (w Workflow[TConfig, TInput, TResult]) run(cfg TConfig) func(wctx workflow.
 
 		result, err := w.Run(wctx, ctx, cfg, input)
 		if w.PostRun != nil {
-			return w.PostRun(wctx, result, err)
+			return w.PostRun(wctx, input, result, err)
 		}
 		return result, err
 	}
@@ -77,7 +79,7 @@ func (w Workflow[TConfig, TInput, TResult]) DoChild(wctx workflow.Context, input
 	var result TResult
 	err := workflow.ExecuteChildWorkflow(wctx, w.Name, input).Get(wctx, &result)
 	if w.HandleResult != nil {
-		return w.HandleResult(wctx, result, err)
+		return w.HandleResult(wctx, input, result, err)
 	}
 	return result, err
 }
@@ -92,7 +94,9 @@ func (w Workflow[TConfig, TInput, TResult]) DoChildAsync(wctx workflow.Context, 
 		ParentClosePolicy:     pcp,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
-	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), w.HandleResult)
+	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), func(wctx workflow.Context, result TResult, err error) (TResult, error) {
+		return w.HandleResult(wctx, input, result, err)
+	})
 }
 
 func (w Workflow[TConfig, TInput, TResult]) Do(ctx context.Context, temporalClient client.Client, input TInput) (TResult, error) {

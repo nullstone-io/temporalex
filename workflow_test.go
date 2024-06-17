@@ -16,11 +16,11 @@ func TestWorkflow_DoChild(t *testing.T) {
 	wflow := Workflow[any, FakeInput, string]{
 		Name:      "fake-workflow",
 		TaskQueue: "X",
-		PostRun: func(wctx workflow.Context, result string, err error) (string, error) {
+		PostRun: func(wctx workflow.Context, input FakeInput, result string, err error) (string, error) {
 			assert.Equal(t, "run-result", result)
 			return "post-run-result", nil
 		},
-		HandleResult: func(wctx workflow.Context, result string, err error) (string, error) {
+		HandleResult: func(wctx workflow.Context, input FakeInput, result string, err error) (string, error) {
 			assert.Equal(t, "post-run-result", result)
 			return "handled-result", nil
 		},
@@ -54,11 +54,11 @@ func TestWorkflow_DoChildAsync(t *testing.T) {
 	wflow := Workflow[any, FakeInput, string]{
 		Name:      "fake-workflow",
 		TaskQueue: "X",
-		PostRun: func(wctx workflow.Context, result string, err error) (string, error) {
+		PostRun: func(wctx workflow.Context, input FakeInput, result string, err error) (string, error) {
 			assert.Equal(t, "run-result", result)
 			return "post-run-result", nil
 		},
-		HandleResult: func(wctx workflow.Context, result string, err error) (string, error) {
+		HandleResult: func(wctx workflow.Context, input FakeInput, result string, err error) (string, error) {
 			assert.Equal(t, "post-run-result", result)
 			return "handled-result", nil
 		},

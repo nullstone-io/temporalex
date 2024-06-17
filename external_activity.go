@@ -8,7 +8,7 @@ type ExternalActivity[TInput any, TResult any] struct {
 	Options   workflow.ActivityOptions
 	// HandleResult executes after the activity completes
 	// This function executes in the workflow that called the activity
-	HandleResult HandleActivityFunc[TResult]
+	HandleResult HandleActivityFunc[TInput, TResult]
 }
 
 func (a ExternalActivity[TInput, TResult]) Do(wctx workflow.Context, input TInput) (TResult, error) {
@@ -18,7 +18,7 @@ func (a ExternalActivity[TInput, TResult]) Do(wctx workflow.Context, input TInpu
 	var result TResult
 	err := workflow.ExecuteActivity(wctx, a.Name, input).Get(wctx, &result)
 	if a.HandleResult != nil {
-		return a.HandleResult(wctx, result, err)
+		return a.HandleResult(wctx, input, result, err)
 	}
 	return result, err
 }

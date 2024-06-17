@@ -18,7 +18,7 @@ func DefaultActivityOptions() workflow.ActivityOptions {
 
 type ActivityRunFunc[TConfig any, TInput any, TResult any] func(ctx context.Context, cfg TConfig, input TInput) (TResult, error)
 type PostActivityFunc[TResult any] func(ctx context.Context, result TResult, err error) (TResult, error)
-type HandleActivityFunc[TResult any] func(wctx workflow.Context, result TResult, err error) (TResult, error)
+type HandleActivityFunc[TInput any, TResult any] func(wctx workflow.Context, input TInput, result TResult, err error) (TResult, error)
 
 var _ Registrar[stub] = Activity[stub, any, any]{}
 
@@ -32,7 +32,7 @@ type Activity[TConfig any, TInput any, TResult any] struct {
 	PostRun PostActivityFunc[TResult]
 	// HandleResult executes after the activity completes
 	// This function executes in the workflow that called the activity
-	HandleResult HandleActivityFunc[TResult]
+	HandleResult HandleActivityFunc[TInput, TResult]
 }
 
 func (a Activity[TConfig, TInput, TResult]) Register(cfg TConfig, registry worker.Registry) {
@@ -59,7 +59,7 @@ func (a Activity[TConfig, TInput, TResult]) Do(wctx workflow.Context, input TInp
 	var result TResult
 	err := workflow.ExecuteActivity(wctx, a.Name, input).Get(wctx, &result)
 	if a.HandleResult != nil {
-		return a.HandleResult(wctx, result, err)
+		return a.HandleResult(wctx, input, result, err)
 	}
 	return result, err
 }
@@ -73,7 +73,7 @@ func (a Activity[TConfig, TInput, TResult]) DoLocal(wctx workflow.Context, input
 	var result TResult
 	err := workflow.ExecuteLocalActivity(wctx, a.Name, input).Get(wctx, &result)
 	if a.HandleResult != nil {
-		return a.HandleResult(wctx, result, err)
+		return a.HandleResult(wctx, input, result, err)
 	}
 	return result, err
 }
