@@ -20,6 +20,8 @@ type ActivityRunFunc[TConfig any, TInput any, TResult any] func(ctx context.Cont
 type PostActivityFunc[TResult any] func(ctx context.Context, result TResult, err error) (TResult, error)
 type HandleActivityFunc[TResult any] func(wctx workflow.Context, result TResult, err error) (TResult, error)
 
+var _ Registrar[stub] = Activity[stub, any, any]{}
+
 type Activity[TConfig any, TInput any, TResult any] struct {
 	Name    string
 	Options workflow.ActivityOptions

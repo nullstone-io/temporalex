@@ -14,11 +14,7 @@ import (
 
 type RunFunc[TConfig any, TInput any, TResult any] func(wctx workflow.Context, ctx context.Context, cfg TConfig, input TInput) (TResult, error)
 
-type WorkflowInput interface {
-	GetTemporalWorkflowId(name string) string
-	SearchAttributes() []temporal.SearchAttributeUpdate
-	SpanAttributes() []attribute.KeyValue
-}
+var _ Registrar[stub] = Workflow[stub, WorkflowInput, any]{}
 
 type Workflow[TConfig any, TInput WorkflowInput, TResult any] struct {
 	Name              string
