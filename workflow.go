@@ -95,7 +95,10 @@ func (w Workflow[TConfig, TInput, TResult]) DoChildAsync(wctx workflow.Context, 
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
 	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), func(wctx workflow.Context, result TResult, err error) (TResult, error) {
-		return w.HandleResult(wctx, input, result, err)
+		if w.HandleResult != nil {
+			return w.HandleResult(wctx, input, result, err)
+		}
+		return result, err
 	})
 }
 
