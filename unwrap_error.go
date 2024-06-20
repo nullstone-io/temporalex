@@ -28,58 +28,44 @@ type PanicError struct {
 
 func (e PanicError) Error() string { return e.Message }
 
-var _ ErrorWrapper = CancelledError{}
-
-type CancelledError struct {
-	Message string `json:"message"`
-}
-
-func (e CancelledError) WrapError() error {
-	return temporal.NewCanceledError(e.Message)
-}
-
-func (e CancelledError) Error() string {
-	return e.Message
-}
-
 // UnwrapError takes an error from a workflow or activity and unwraps the Temporal skeleton to leave the base error
 // This utilizes UnwrapCustomError to extract the strongly-typed error across workflow/activity boundaries
-func UnwrapError(inputErr error) (UnwrapErrType, error) {
+func UnwrapError(inputErr error) (UnwrapErrType, string, error) {
+	curErr := inputErr
+
+	var appErr *temporal.ApplicationError
+	if errors.As(curErr, &appErr) {
+		curErr = UnwrapCustomError(appErr)
+	}
+
 	var panicErr *temporal.PanicError
-	if errors.As(inputErr, &panicErr) {
-		return UnwrapErrTypePanic, PanicError{
+	if errors.As(curErr, &panicErr) {
+		return UnwrapErrTypePanic, panicErr.Error(), PanicError{
 			Message:    panicErr.Error(),
 			StackTrace: panicErr.StackTrace(),
 		}
 	}
 
 	// These can error when a workflow's context has `Done()`
-	if errors.Is(inputErr, workflow.ErrCanceled) {
-		return UnwrapErrTypeCancellation, ErrSystemCancellation
-	} else if errors.Is(inputErr, workflow.ErrDeadlineExceeded) {
-		return UnwrapErrTypeTimeout, ErrTimeout
+	if errors.Is(curErr, workflow.ErrCanceled) {
+		return UnwrapErrTypeCancellation, ErrSystemCancellation.Error(), ErrSystemCancellation
+	} else if errors.Is(curErr, workflow.ErrDeadlineExceeded) {
+		return UnwrapErrTypeTimeout, ErrTimeout.Error(), ErrTimeout
 	}
 
 	var canceledErr *temporal.CanceledError
-	if errors.As(inputErr, &canceledErr) {
-		var finalErr CancelledError
-		canceledErr.Details(&finalErr.Message)
-		return UnwrapErrTypeCancellation, finalErr
-	}
-
-	var appErr *temporal.ApplicationError
-	if errors.As(inputErr, &appErr) {
-		return UnwrapErrTypeFailure, UnwrapCustomError(appErr)
+	if errors.As(curErr, &canceledErr) {
+		var msg string
+		canceledErr.Details(&msg)
+		return UnwrapErrTypeCancellation, msg, curErr
 	}
 
 	var wflowErr *temporal.WorkflowExecutionError
-	if errors.As(inputErr, &wflowErr) {
-		return UnwrapErrTypeFailure, wflowErr.Unwrap()
-	}
 	var actErr *temporal.ActivityError
-	if errors.As(inputErr, &actErr) {
-		return UnwrapErrTypeFailure, actErr.Unwrap()
+	if errors.As(curErr, &wflowErr) {
+		curErr = wflowErr.Unwrap()
+	} else if errors.As(curErr, &actErr) {
+		curErr = actErr.Unwrap()
 	}
-
-	return UnwrapErrTypeFailure, inputErr
+	return UnwrapErrTypeFailure, curErr.Error(), curErr
 }
