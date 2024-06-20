@@ -1,9 +1,9 @@
 package temporalex
 
 import (
-	"fmt"
 	"go.temporal.io/sdk/workflow"
-	"reflect"
+	"log"
+	"sync"
 )
 
 type OnResolvedFunc[T any] func(wctx workflow.Context, result T, err error) (T, error)
@@ -11,33 +11,16 @@ type OnResolvedFunc[T any] func(wctx workflow.Context, result T, err error) (T, 
 var _ workflow.Future = &TypedFuture[any]{}
 
 type TypedFuture[T any] struct {
+	baseFuture workflow.Future
 	Result     T
 	Err        error
-	OnResolved OnResolvedFunc[T]
-	baseFuture workflow.Future
+	onResolved OnResolvedFunc[T]
+	once       *sync.Once
 }
 
-func (f *TypedFuture[T]) Get(ctx workflow.Context, ptr any) error {
-	var result T
-	if ptr != nil {
-		f.Err = f.baseFuture.Get(ctx, ptr)
-		if f.Err == nil {
-			if ptrVal := reflect.ValueOf(ptr); ptrVal.Kind() != reflect.Ptr {
-				return fmt.Errorf("valuePtr must be a pointer")
-			} else if ptrElem, resultType := ptrVal.Elem(), reflect.TypeOf(f.Result); !ptrElem.Type().AssignableTo(resultType) {
-				return fmt.Errorf("valuePtr is not assignable to %v", resultType)
-			} else {
-				result, _ = ptrElem.Interface().(T)
-			}
-		}
-	} else {
-		f.Err = f.baseFuture.Get(ctx, &result)
-	}
-	f.Result = result
-
-	if f.OnResolved != nil {
-		f.Result, f.Err = f.OnResolved(ctx, f.Result, f.Err)
-	}
+func (f *TypedFuture[T]) Get(wctx workflow.Context, ptr any) error {
+	f.baseFuture.Get(wctx, ptr)
+	f.resolve(wctx)
 	return f.Err
 }
 
@@ -51,8 +34,9 @@ func (f *TypedFuture[T]) GetTyped(wctx workflow.Context) (T, error) {
 	return f.Result, f.Err
 }
 
-func (f *TypedFuture[T]) AddToSelector(selector workflow.Selector, fns ...func(f TypedFuture[T]) T) {
-	selector.AddFuture(f.baseFuture, func(_ workflow.Future) {
+func (f *TypedFuture[T]) AddToSelector(wctx workflow.Context, selector workflow.Selector, fns ...func(f TypedFuture[T]) T) {
+	selector.AddFuture(f.baseFuture, func(bf workflow.Future) {
+		f.resolve(wctx)
 		for _, fn := range fns {
 			if fn != nil {
 				fn(*f)
@@ -61,20 +45,34 @@ func (f *TypedFuture[T]) AddToSelector(selector workflow.Selector, fns ...func(f
 	})
 }
 
+func (f *TypedFuture[T]) resolve(wctx workflow.Context) {
+	f.once.Do(func() {
+		log.Println("resolve")
+		f.Err = f.baseFuture.Get(wctx, &f.Result)
+		if f.onResolved != nil {
+			f.Result, f.Err = f.onResolved(wctx, f.Result, f.Err)
+		}
+	})
+}
+
 func NewResolvedFuture[T any](wctx workflow.Context, result T, err error) *TypedFuture[T] {
 	future, setter := workflow.NewFuture(wctx)
 	setter.Set(result, err)
-	return &TypedFuture[T]{
+	tf := &TypedFuture[T]{
 		Result:     result,
 		Err:        err,
-		OnResolved: nil,
+		onResolved: nil,
 		baseFuture: future,
+		once:       &sync.Once{},
 	}
+	tf.once.Do(func() {})
+	return tf
 }
 
 func NewFuture[T any](future workflow.Future, onResolved OnResolvedFunc[T]) *TypedFuture[T] {
 	return &TypedFuture[T]{
 		baseFuture: future,
-		OnResolved: onResolved,
+		onResolved: onResolved,
+		once:       &sync.Once{},
 	}
 }

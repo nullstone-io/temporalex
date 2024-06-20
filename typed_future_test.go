@@ -1,9 +1,11 @@
 package temporalex
 
 import (
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 	"testing"
@@ -75,20 +77,38 @@ func TestTypedFuture_AddToSelector(t *testing.T) {
 	suite := &testsuite.WorkflowTestSuite{}
 	env := suite.NewTestWorkflowEnvironment()
 
+	anotherWorkflow := func(wctx workflow.Context, input any) (any, error) {
+		return "", fmt.Errorf("another error")
+	}
+
 	mainWorkflow := func(wctx workflow.Context, input any) (any, error) {
 		f1 := NewFuture[any](workflow.NewTimer(wctx, time.Second), nil)
 		f2 := NewResolvedFuture[any](wctx, "resolved", nil)
+		f3 := NewFuture[any](workflow.ExecuteChildWorkflow(wctx, anotherWorkflow), nil)
 		selector := workflow.NewSelector(wctx)
-		f1.AddToSelector(selector)
-		f2.AddToSelector(selector)
+		f1.AddToSelector(wctx, selector)
+		f2.AddToSelector(wctx, selector)
+		f3.AddToSelector(wctx, selector)
 
-		for !f1.IsReady() && !f2.IsReady() {
+		for i := 0; i < 3; i++ {
 			selector.Select(wctx)
+		}
+
+		assert.Nil(t, f1.Result)
+		assert.NoError(t, f1.Err)
+		assert.Equal(t, "resolved", f2.Result)
+		assert.NoError(t, f2.Err)
+		assert.Equal(t, nil, f3.Result)
+		var childExecError *temporal.ChildWorkflowExecutionError
+		if assert.NotNil(t, f3.Err, "expected error") &&
+			assert.True(t, errors.As(f3.Err, &childExecError), "expected child workflow execution error") {
+			assert.EqualError(t, childExecError.Unwrap(), "another error")
 		}
 
 		return input, nil
 	}
 	env.RegisterWorkflow(mainWorkflow)
+	env.RegisterWorkflow(anotherWorkflow)
 
 	env.ExecuteWorkflow(mainWorkflow, struct{}{})
 
