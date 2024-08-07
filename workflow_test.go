@@ -20,7 +20,7 @@ func TestWorkflow_DoChild(t *testing.T) {
 			assert.Equal(t, "run-result", result)
 			return "post-run-result", nil
 		},
-		HandleResult: func(wctx workflow.Context, input FakeInput, result string, err error) (string, error) {
+		HandleResult: func(wctx workflow.Context, ctx context.Context, input FakeInput, result string, err error) (string, error) {
 			assert.Equal(t, "post-run-result", result)
 			return "handled-result", nil
 		},
@@ -31,7 +31,7 @@ func TestWorkflow_DoChild(t *testing.T) {
 	wflow.Register(struct{}{}, env)
 
 	mainWorkflow := func(wctx workflow.Context, input FakeInput) (string, error) {
-		return wflow.DoChild(wctx, input)
+		return wflow.DoChild(wctx, context.TODO(), input)
 	}
 	env.RegisterWorkflow(mainWorkflow)
 
@@ -58,7 +58,7 @@ func TestWorkflow_DoChildAsync(t *testing.T) {
 			assert.Equal(t, "run-result", result)
 			return "post-run-result", nil
 		},
-		HandleResult: func(wctx workflow.Context, input FakeInput, result string, err error) (string, error) {
+		HandleResult: func(wctx workflow.Context, ctx context.Context, input FakeInput, result string, err error) (string, error) {
 			assert.Equal(t, "post-run-result", result)
 			return "handled-result", nil
 		},
@@ -69,7 +69,7 @@ func TestWorkflow_DoChildAsync(t *testing.T) {
 	wflow.Register(struct{}{}, env)
 
 	mainWorkflow := func(wctx workflow.Context, input FakeInput) (string, error) {
-		future := wflow.DoChildAsync(wctx, input)
+		future := wflow.DoChildAsync(wctx, context.TODO(), input)
 		return future.GetTyped(wctx)
 	}
 	env.RegisterWorkflow(mainWorkflow)
