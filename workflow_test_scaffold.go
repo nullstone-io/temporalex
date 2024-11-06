@@ -34,3 +34,4 @@ func (a WorkflowTestScaffold) RegisterActivity(act interface{}) {
 func (a WorkflowTestScaffold) RegisterActivityWithOptions(act interface{}, options activity.RegisterOptions) {
 	a.Env.RegisterActivityWithOptions(act, options)
 }
+func (a WorkflowTestScaffold) RegisterNexusService(service *nexus.Service) {}
