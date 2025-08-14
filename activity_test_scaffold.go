@@ -31,4 +31,3 @@ func (a ActivityTestScaffold) RegisterActivity(act interface{}) {
 func (a ActivityTestScaffold) RegisterActivityWithOptions(act interface{}, options activity.RegisterOptions) {
 	a.Env.RegisterActivityWithOptions(act, options)
 }
-func (a ActivityTestScaffold) RegisterNexusService(service *nexus.Service) {}
