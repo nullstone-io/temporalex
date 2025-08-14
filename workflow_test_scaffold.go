@@ -1,6 +1,7 @@
 package temporalex
 
 import (
+	"github.com/nexus-rpc/sdk-go/nexus"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/worker"
@@ -16,6 +17,11 @@ type WorkflowTestScaffold struct {
 	T   *testing.T
 }
 
+func (a WorkflowTestScaffold) RegisterDynamicWorkflow(wflow interface{}, options workflow.DynamicRegisterOptions) {
+}
+func (a WorkflowTestScaffold) RegisterDynamicActivity(activity interface{}, options activity.DynamicRegisterOptions) {
+}
+func (a WorkflowTestScaffold) RegisterNexusService(service *nexus.Service) {}
 func (a WorkflowTestScaffold) RegisterWorkflow(w interface{}) {
 	a.Env.RegisterWorkflow(w)
 }
