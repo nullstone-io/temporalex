@@ -2,15 +2,17 @@ package temporalex
 
 import (
 	"context"
+	"time"
+
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
-	"time"
 )
 
-func DefaultActivityOptions() workflow.ActivityOptions {
+func DefaultActivityOptions(taskQueue string) workflow.ActivityOptions {
 	return workflow.ActivityOptions{
+		TaskQueue:           taskQueue,
 		StartToCloseTimeout: 12 * time.Hour,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
