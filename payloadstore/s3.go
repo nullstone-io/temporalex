@@ -1,0 +1,120 @@
+package payloadstore
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
+)
+
+const (
+	// BucketNameEnvVar and BucketRegionEnvVar name the bucket that backs S3Store.
+	// They live here rather than in each service's config loader so that every service
+	// participating in a payload handoff reads the same bucket without coordination.
+	BucketNameEnvVar   = "S3_BUCKET_NAME"
+	BucketRegionEnvVar = "S3_BUCKET_REGION"
+
+	// DefaultPrefix namespaces stored payloads inside the bucket so a lifecycle rule can
+	// target them without touching anything else the bucket holds.
+	DefaultPrefix = "temporal-payloads/"
+)
+
+var _ Store = S3Store{}
+
+// S3Store keeps payloads in an S3 bucket.
+//
+// The bucket should carry a lifecycle rule expiring objects under Prefix. Nothing deletes
+// them otherwise: a Ref recorded in workflow history stays readable for as long as the
+// workflow might replay, so the retention window should exceed the longest workflow
+// execution plus whatever history retention the namespace is configured for.
+type S3Store struct {
+	Client *s3.Client
+	Bucket string
+	// Prefix is prepended to every generated key. Defaults to DefaultPrefix when empty.
+	Prefix string
+}
+
+// NewS3StoreFromEnv builds an S3Store from BucketNameEnvVar and BucketRegionEnvVar.
+//
+// It returns a nil Store when the bucket is unset, so a service can run without one
+// configured. Callers that then attempt a handoff get a clear "payload store is not
+// configured" error from PutJSON/GetJSON rather than a nil dereference.
+func NewS3StoreFromEnv(ctx context.Context) (Store, error) {
+	bucket := os.Getenv(BucketNameEnvVar)
+	if bucket == "" {
+		return nil, nil
+	}
+	return NewS3Store(ctx, bucket, os.Getenv(BucketRegionEnvVar))
+}
+
+// NewS3Store builds an S3Store for the given bucket. An empty region falls back to the
+// ambient AWS config (AWS_REGION, instance metadata, and so on).
+func NewS3Store(ctx context.Context, bucket, region string) (Store, error) {
+	if bucket == "" {
+		return nil, fmt.Errorf("payload store bucket is required")
+	}
+	opts := []func(*awsconfig.LoadOptions) error{}
+	if region != "" {
+		opts = append(opts, awsconfig.WithRegion(region))
+	}
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("error loading aws config for payload store: %w", err)
+	}
+	return S3Store{
+		Client: s3.NewFromConfig(awsCfg),
+		Bucket: bucket,
+		Prefix: DefaultPrefix,
+	}, nil
+}
+
+func (s S3Store) Put(ctx context.Context, data []byte) (Ref, error) {
+	prefix := s.Prefix
+	if prefix == "" {
+		prefix = DefaultPrefix
+	}
+	// A fresh key per call. Activity retries store a new copy rather than racing to
+	// overwrite one that an earlier attempt may still be reading.
+	key := prefix + uuid.NewString()
+
+	_, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(s.Bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(data),
+	})
+	if err != nil {
+		return Ref{}, fmt.Errorf("error storing payload in s3://%s/%s: %w", s.Bucket, key, err)
+	}
+	return Ref{Bucket: s.Bucket, Key: key}, nil
+}
+
+func (s S3Store) Get(ctx context.Context, ref Ref) ([]byte, error) {
+	if ref.IsZero() {
+		return nil, fmt.Errorf("cannot retrieve an empty payload reference")
+	}
+	bucket := ref.Bucket
+	if bucket == "" {
+		bucket = s.Bucket
+	}
+
+	out, err := s.Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(ref.Key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving payload from s3://%s/%s: %w", bucket, ref.Key, err)
+	}
+	defer out.Body.Close()
+
+	data, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading payload from s3://%s/%s: %w", bucket, ref.Key, err)
+	}
+	return data, nil
+}
