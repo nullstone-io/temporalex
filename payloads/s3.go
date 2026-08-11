@@ -16,14 +16,16 @@ var _ Store = S3Store{}
 
 // S3Store keeps payloads in an S3 bucket.
 //
-// The bucket should carry a lifecycle rule expiring objects under Prefix. Nothing deletes
-// them otherwise: a Ref recorded in workflow history stays readable for as long as the
-// workflow might replay, so the retention window should exceed the longest workflow
-// execution plus whatever history retention the namespace is configured for.
+// The bucket should carry a lifecycle rule expiring stored payloads. Nothing deletes them
+// otherwise: a Ref recorded in workflow history stays readable for as long as the workflow
+// might replay, so the retention window should exceed the longest workflow execution plus
+// whatever history retention the namespace is configured for.
 type S3Store struct {
 	Client *s3.Client
 	Bucket string
-	// Prefix is prepended to every generated key. Defaults to DefaultPrefix when empty.
+	// Prefix is prepended to every generated key. Empty by default, which writes to the
+	// root of the bucket. Set it to scope payloads to a subpath -- useful when the bucket
+	// holds anything else, so a lifecycle rule can target payloads alone.
 	Prefix string
 }
 
@@ -44,18 +46,13 @@ func NewS3Store(ctx context.Context, bucket, region string) (Store, error) {
 	return S3Store{
 		Client: s3.NewFromConfig(awsCfg),
 		Bucket: bucket,
-		Prefix: DefaultPrefix,
 	}, nil
 }
 
 func (s S3Store) Put(ctx context.Context, data []byte) (Ref, error) {
-	prefix := s.Prefix
-	if prefix == "" {
-		prefix = DefaultPrefix
-	}
 	// A fresh key per call. Activity retries store a new copy rather than racing to
 	// overwrite one that an earlier attempt may still be reading.
-	key := prefix + uuid.NewString()
+	key := s.Prefix + uuid.NewString()
 
 	_, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.Bucket),

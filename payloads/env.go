@@ -17,10 +17,6 @@ const (
 	S3BucketNameEnvVar   = "S3_BUCKET_NAME"
 	S3BucketRegionEnvVar = "S3_BUCKET_REGION"
 	GcsBucketNameEnvVar  = "GCS_BUCKET_NAME"
-
-	// DefaultPrefix namespaces stored payloads inside the bucket so a lifecycle rule can
-	// target them without touching anything else the bucket holds.
-	DefaultPrefix = "temporal-payloads/"
 )
 
 // NewStoreFromEnv builds whichever Store the environment is configured for: S3 when

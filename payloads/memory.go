@@ -30,7 +30,7 @@ func (m *MemoryStore) Put(ctx context.Context, data []byte) (Ref, error) {
 	if m.objects == nil {
 		m.objects = map[string][]byte{}
 	}
-	key := DefaultPrefix + uuid.NewString()
+	key := uuid.NewString()
 	// Copy: the caller owns data and may reuse the backing array.
 	stored := make([]byte, len(data))
 	copy(stored, data)
