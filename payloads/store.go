@@ -1,4 +1,4 @@
-// Package payloadstore transfers large values between Temporal activities without putting
+// Package payloads transfers large values between Temporal activities without putting
 // them in the workflow payload.
 //
 // Temporal writes every activity input and output into workflow history, and the server
@@ -12,14 +12,14 @@
 // activity exchanges the Ref for the value. Only the Ref travels through history.
 //
 //	// in the producing activity
-//	ref, err := payloadstore.PutJSON(ctx, cfg.PayloadStore, configFiles)
+//	ref, err := payloads.PutJSON(ctx, cfg.PayloadStore, configFiles)
 //
 //	// in the consuming activity
-//	configFiles, err := payloadstore.GetJSON[map[string]string](ctx, cfg.PayloadStore, ref)
+//	configFiles, err := payloads.GetJSON[map[string]string](ctx, cfg.PayloadStore, ref)
 //
 // Put and Get perform network I/O, so they must be called from activities. Calling them
 // from workflow code is non-deterministic and will break replay.
-package payloadstore
+package payloads
 
 import (
 	"context"

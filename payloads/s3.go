@@ -1,28 +1,15 @@
-package payloadstore
+package payloads
 
 import (
 	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
-)
-
-const (
-	// BucketNameEnvVar and BucketRegionEnvVar name the bucket that backs S3Store.
-	// They live here rather than in each service's config loader so that every service
-	// participating in a payload handoff reads the same bucket without coordination.
-	BucketNameEnvVar   = "S3_BUCKET_NAME"
-	BucketRegionEnvVar = "S3_BUCKET_REGION"
-
-	// DefaultPrefix namespaces stored payloads inside the bucket so a lifecycle rule can
-	// target them without touching anything else the bucket holds.
-	DefaultPrefix = "temporal-payloads/"
 )
 
 var _ Store = S3Store{}
@@ -38,19 +25,6 @@ type S3Store struct {
 	Bucket string
 	// Prefix is prepended to every generated key. Defaults to DefaultPrefix when empty.
 	Prefix string
-}
-
-// NewS3StoreFromEnv builds an S3Store from BucketNameEnvVar and BucketRegionEnvVar.
-//
-// It returns a nil Store when the bucket is unset, so a service can run without one
-// configured. Callers that then attempt a handoff get a clear "payload store is not
-// configured" error from PutJSON/GetJSON rather than a nil dereference.
-func NewS3StoreFromEnv(ctx context.Context) (Store, error) {
-	bucket := os.Getenv(BucketNameEnvVar)
-	if bucket == "" {
-		return nil, nil
-	}
-	return NewS3Store(ctx, bucket, os.Getenv(BucketRegionEnvVar))
 }
 
 // NewS3Store builds an S3Store for the given bucket. An empty region falls back to the

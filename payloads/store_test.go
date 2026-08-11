@@ -1,4 +1,4 @@
-package payloadstore
+package payloads
 
 import (
 	"context"
