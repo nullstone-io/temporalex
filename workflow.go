@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
@@ -45,22 +46,39 @@ func (w Workflow[TConfig, TInput, TResult]) Register(cfg TConfig, registry worke
 
 func (w Workflow[TConfig, TInput, TResult]) run(cfg TConfig) func(wctx workflow.Context, input TInput) (TResult, error) {
 	return func(wctx workflow.Context, input TInput) (TResult, error) {
-		var span trace.Span
-		ctx := context.Background()
 		wInfo := workflow.GetInfo(wctx)
+		attrs := append(
+			input.SpanAttributes(),
+			attribute.String("temporal.workflow.id", wInfo.WorkflowExecution.ID),
+			attribute.String("temporal.workflow.type", wInfo.WorkflowType.Name),
+		)
+
+		// The Temporal tracing interceptor owns the `RunWorkflow:<type>` span, and it is the only
+		// span that records the workflow's final error. Mirror our attributes onto it so failures
+		// are filterable by the input's own dimensions, and use it as our parent so both spans land
+		// in the same trace. Without this, our span is a root in a trace of its own and the span
+		// carrying the error has no attributes to filter or group on.
+		ctx := context.Background()
+		if parent := WorkflowSpan(wctx); parent.SpanContext().IsValid() {
+			parent.SetAttributes(attrs...)
+			ctx = trace.ContextWithSpan(ctx, parent)
+		}
+
+		var span trace.Span
 		ctx, span = tracer.Start(ctx, fmt.Sprintf("%s.Run", w.Name),
 			trace.WithSpanKind(trace.SpanKindInternal),
-			trace.WithAttributes(append(
-				input.SpanAttributes(),
-				attribute.String("temporal.workflow.id", wInfo.WorkflowExecution.ID),
-				attribute.String("temporal.workflow.type", wInfo.WorkflowType.Name),
-			)...),
+			trace.WithAttributes(attrs...),
 		)
 		defer span.End()
 
 		result, err := w.Run(wctx, ctx, cfg, input)
 		if w.PostRun != nil {
-			return w.PostRun(wctx, input, result, err)
+			// PostRun deciphers the error, so record what it returns rather than the raw error
+			result, err = w.PostRun(wctx, input, result, err)
+		}
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 		}
 		return result, err
 	}
