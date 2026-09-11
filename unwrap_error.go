@@ -47,7 +47,10 @@ func UnwrapError(inputErr error) (UnwrapErrType, string, error) {
 	}
 
 	// These can error when a workflow's context has `Done()`
-	if errors.Is(curErr, workflow.ErrCanceled) {
+	// ErrSystemCancellation is what this function returned for a previous decipher of the same cancellation
+	// (e.g. a run's error handler deciphered it, then the owning workspace workflow deciphers what it returned);
+	// it must still read as a cancellation, not a failure
+	if errors.Is(curErr, workflow.ErrCanceled) || errors.Is(curErr, ErrSystemCancellation) {
 		return UnwrapErrTypeCancellation, ErrSystemCancellation.Error(), ErrSystemCancellation
 	} else if errors.Is(curErr, workflow.ErrDeadlineExceeded) {
 		return UnwrapErrTypeTimeout, ErrTimeout.Error(), ErrTimeout

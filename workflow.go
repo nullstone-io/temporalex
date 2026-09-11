@@ -94,6 +94,9 @@ func (w Workflow[TConfig, TInput, TResult]) DoChild(wctx workflow.Context, ctx c
 		WorkflowID:            input.GetTemporalWorkflowId(w.Name),
 		ParentClosePolicy:     pcp,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
+		// When the parent is cancelled, block until the child has finished its own cancellation
+		// so the parent's terminal status is not recorded while a child is still stopping a process
+		WaitForCancellation: true,
 	})
 	var result TResult
 	err := workflow.ExecuteChildWorkflow(wctx, w.Name, input).Get(wctx, &result)
@@ -112,6 +115,9 @@ func (w Workflow[TConfig, TInput, TResult]) DoChildAsync(wctx workflow.Context, 
 		WorkflowID:            input.GetTemporalWorkflowId(w.Name),
 		ParentClosePolicy:     pcp,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
+		// When the parent is cancelled, block until the child has finished its own cancellation
+		// so the parent's terminal status is not recorded while a child is still stopping a process
+		WaitForCancellation: true,
 	})
 	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), func(wctx workflow.Context, result TResult, err error) (TResult, error) {
 		if w.HandleResult != nil {
