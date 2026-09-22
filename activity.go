@@ -61,7 +61,7 @@ func (a Activity[TConfig, TInput, TResult]) Do(wctx workflow.Context, input TInp
 	var result TResult
 	err := workflow.ExecuteActivity(wctx, a.Name, input).Get(wctx, &result)
 	if a.HandleResult != nil {
-		return a.HandleResult(wctx, input, result, err)
+		return a.HandleResult(FinalizerContext(wctx), input, result, err)
 	}
 	return result, err
 }
@@ -75,7 +75,7 @@ func (a Activity[TConfig, TInput, TResult]) DoLocal(wctx workflow.Context, input
 	var result TResult
 	err := workflow.ExecuteLocalActivity(wctx, a.Name, input).Get(wctx, &result)
 	if a.HandleResult != nil {
-		return a.HandleResult(wctx, input, result, err)
+		return a.HandleResult(FinalizerContext(wctx), input, result, err)
 	}
 	return result, err
 }

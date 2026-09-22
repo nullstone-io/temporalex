@@ -18,7 +18,7 @@ func (a ExternalActivity[TInput, TResult]) Do(wctx workflow.Context, input TInpu
 	var result TResult
 	err := workflow.ExecuteActivity(wctx, a.Name, input).Get(wctx, &result)
 	if a.HandleResult != nil {
-		return a.HandleResult(wctx, input, result, err)
+		return a.HandleResult(FinalizerContext(wctx), input, result, err)
 	}
 	return result, err
 }

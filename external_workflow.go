@@ -32,7 +32,7 @@ func (w ExternalWorkflow[TInput, TResult]) DoChild(wctx workflow.Context, input 
 	var result TResult
 	err := workflow.ExecuteChildWorkflow(wctx, w.Name, input).Get(wctx, &result)
 	if w.HandleResult != nil {
-		return w.HandleResult(wctx, result, err)
+		return w.HandleResult(FinalizerContext(wctx), result, err)
 	}
 	return result, err
 }
@@ -48,7 +48,12 @@ func (w ExternalWorkflow[TInput, TResult]) DoChildAsync(wctx workflow.Context, i
 		ParentClosePolicy:     enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
-	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), w.HandleResult)
+	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), func(wctx workflow.Context, result TResult, err error) (TResult, error) {
+		if w.HandleResult != nil {
+			return w.HandleResult(FinalizerContext(wctx), result, err)
+		}
+		return result, err
+	})
 }
 
 func (w ExternalWorkflow[TInput, TResult]) Do(ctx context.Context, temporalClient client.Client, input TInput) (TResult, error) {
