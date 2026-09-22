@@ -73,8 +73,9 @@ func (w Workflow[TConfig, TInput, TResult]) run(cfg TConfig) func(wctx workflow.
 
 		result, err := w.Run(wctx, ctx, cfg, input)
 		if w.PostRun != nil {
-			// PostRun deciphers the error, so record what it returns rather than the raw error
-			result, err = w.PostRun(wctx, input, result, err)
+			// PostRun deciphers the error, so record what it returns rather than the raw error.
+			// It finalizes the workflow, so it must still run when the workflow was cancelled.
+			result, err = w.PostRun(FinalizerContext(wctx), input, result, err)
 		}
 		if err != nil {
 			span.RecordError(err)
@@ -97,7 +98,7 @@ func (w Workflow[TConfig, TInput, TResult]) DoChild(wctx workflow.Context, ctx c
 	var result TResult
 	err := workflow.ExecuteChildWorkflow(wctx, w.Name, input).Get(wctx, &result)
 	if w.HandleResult != nil {
-		return w.HandleResult(wctx, ctx, input, result, err)
+		return w.HandleResult(FinalizerContext(wctx), ctx, input, result, err)
 	}
 	return result, err
 }
@@ -114,7 +115,7 @@ func (w Workflow[TConfig, TInput, TResult]) DoChildAsync(wctx workflow.Context, 
 	})
 	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), func(wctx workflow.Context, result TResult, err error) (TResult, error) {
 		if w.HandleResult != nil {
-			return w.HandleResult(wctx, ctx, input, result, err)
+			return w.HandleResult(FinalizerContext(wctx), ctx, input, result, err)
 		}
 		return result, err
 	})
