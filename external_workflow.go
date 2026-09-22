@@ -27,6 +27,7 @@ func (w ExternalWorkflow[TInput, TResult]) DoChild(wctx workflow.Context, input 
 		TaskQueue:             w.TaskQueue,
 		WorkflowID:            input.GetTemporalWorkflowId(w.Name),
 		ParentClosePolicy:     enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
+		WaitForCancellation:   true,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
 	var result TResult
@@ -46,6 +47,7 @@ func (w ExternalWorkflow[TInput, TResult]) DoChildAsync(wctx workflow.Context, i
 		TaskQueue:             w.TaskQueue,
 		WorkflowID:            input.GetTemporalWorkflowId(w.Name),
 		ParentClosePolicy:     enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
+		WaitForCancellation:   true,
 		TypedSearchAttributes: temporal.NewSearchAttributes(input.SearchAttributes()...),
 	})
 	return NewFuture[TResult](workflow.ExecuteChildWorkflow(wctx, w.Name, input), func(wctx workflow.Context, result TResult, err error) (TResult, error) {

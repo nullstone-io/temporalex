@@ -199,3 +199,11 @@ func TestUnwrapError_Workflow(t *testing.T) {
 		})
 	}
 }
+
+// A cancellation that was already deciphered once (its handler returned ErrSystemCancellation) still reads as a cancellation
+func TestUnwrapError_RedecipheredSystemCancellation(t *testing.T) {
+	errType, msg, err := UnwrapError(ErrSystemCancellation)
+	assert.Equal(t, UnwrapErrTypeCancellation, errType)
+	assert.Equal(t, ErrSystemCancellation.Error(), msg)
+	assert.ErrorIs(t, err, ErrSystemCancellation)
+}
