@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	commonpb "go.temporal.io/api/common/v1"
+	enumspb "go.temporal.io/api/enums/v1"
+	failurepb "go.temporal.io/api/failure/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 	"net/url"
@@ -198,6 +201,41 @@ func TestUnwrapError_Workflow(t *testing.T) {
 			assert.Equal(t, test.wantErr, unwrappedErr, "unwrapped error")
 		})
 	}
+}
+
+// activityCanceledError builds the error a workflow receives when Temporal reports an activity as cancelled,
+// the way the failure converter hands it over: an ActivityError wrapping a CanceledError with details
+func activityCanceledError(startedEventId int64, details string) error {
+	converter := temporal.GetDefaultFailureConverter()
+	return converter.FailureToError(&failurepb.Failure{
+		Message: "activity error",
+		FailureInfo: &failurepb.Failure_ActivityFailureInfo{ActivityFailureInfo: &failurepb.ActivityFailureInfo{
+			ScheduledEventId: 78,
+			StartedEventId:   startedEventId,
+			ActivityType:     &commonpb.ActivityType{Name: "activity/update-tf-run-status"},
+			ActivityId:       "78",
+			RetryState:       enumspb.RETRY_STATE_NON_RETRYABLE_FAILURE,
+		}},
+		Cause: converter.ErrorToFailure(temporal.NewCanceledError(details)),
+	})
+}
+
+// An activity scheduled on an already-cancelled context is cancelled by the server before any worker starts it;
+// the server's marker in its details ("ACTIVITY_ID_NOT_STARTED") is not a message and must not surface as one
+func TestUnwrapError_ActivityCancelledBeforeStart(t *testing.T) {
+	errType, msg, err := UnwrapError(activityCanceledError(0, "ACTIVITY_ID_NOT_STARTED"))
+	assert.Equal(t, UnwrapErrTypeCancellation, errType)
+	assert.Equal(t, ErrSystemCancellation.Error(), msg)
+	assert.ErrorIs(t, err, ErrSystemCancellation)
+}
+
+// A started activity that returns a CanceledError chose its message (e.g. "the platform evicted the rollout")
+func TestUnwrapError_StartedActivityKeepsItsCancelMessage(t *testing.T) {
+	errType, msg, err := UnwrapError(activityCanceledError(79, "the platform evicted the rollout"))
+	assert.Equal(t, UnwrapErrTypeCancellation, errType)
+	assert.Equal(t, "the platform evicted the rollout", msg)
+	var canceledErr *temporal.CanceledError
+	assert.ErrorAs(t, err, &canceledErr)
 }
 
 // A cancellation that was already deciphered once (its handler returned ErrSystemCancellation) still reads as a cancellation
