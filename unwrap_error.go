@@ -58,6 +58,13 @@ func UnwrapError(inputErr error) (UnwrapErrType, string, error) {
 
 	var canceledErr *temporal.CanceledError
 	if errors.As(curErr, &canceledErr) {
+		var actErr *temporal.ActivityError
+		if errors.As(curErr, &actErr) && actErr.StartedEventID() <= 0 {
+			// The activity was cancelled before a worker ever started it (scheduled on an already-cancelled context).
+			// Its details are the server's own marker ("ACTIVITY_ID_NOT_STARTED"), not a message from our code,
+			// so this is a plain system cancellation. A started activity that returns a CanceledError chose its message.
+			return UnwrapErrTypeCancellation, ErrSystemCancellation.Error(), ErrSystemCancellation
+		}
 		var msg string
 		canceledErr.Details(&msg)
 		return UnwrapErrTypeCancellation, msg, curErr
