@@ -81,7 +81,10 @@ func (w Workflow[TConfig, TInput, TResult]) run(cfg TConfig) func(wctx workflow.
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		}
-		return result, err
+		notifyWorkflowObservers(wctx, span, err)
+		// A registered error type reaches the parent workflow only as an application error with details;
+		// unwrapped, Temporal keeps its message alone. Idempotent for errors PostRun already wrapped.
+		return result, WrapCustomError(err)
 	}
 }
 
