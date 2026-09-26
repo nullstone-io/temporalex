@@ -77,36 +77,15 @@ func (w Workflow[TConfig, TInput, TResult]) run(cfg TConfig) func(wctx workflow.
 			// It finalizes the workflow, so it must still run when the workflow was cancelled.
 			result, err = w.PostRun(FinalizerContext(wctx), input, result, err)
 		}
-		w.recordOutcome(wctx, span, err)
-		// A registered error type (including a WithFailure classification) reaches the parent workflow only as an
-		// application error with details; unwrapped, Temporal keeps its message alone. Idempotent for errors
-		// PostRun already wrapped.
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		notifyWorkflowObservers(wctx, span, err)
+		// A registered error type reaches the parent workflow only as an application error with details;
+		// unwrapped, Temporal keeps its message alone. Idempotent for errors PostRun already wrapped.
 		return result, WrapCustomError(err)
 	}
-}
-
-// recordOutcome classifies the workflow's final error onto our `<name>.Run` span and the interceptor's
-// `RunWorkflow:<type>` span (the one that records the error), and counts the completion by status and,
-// for user/internal failures, by class/category. This is the single place a workflow outcome is recorded.
-func (w Workflow[TConfig, TInput, TResult]) recordOutcome(wctx workflow.Context, span trace.Span, err error) {
-	wInfo := workflow.GetInfo(wctx)
-	var info FailureInfo
-	if err != nil {
-		var unwrapped error
-		info, unwrapped = classify(err)
-		attrs := info.Attributes(errorTypeName(unwrapped))
-		span.SetAttributes(attrs...)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		if parent := WorkflowSpan(wctx); parent.SpanContext().IsValid() {
-			parent.SetAttributes(attrs...)
-		}
-	}
-	// Workflow code re-executes during replay; the outcome only happened once
-	if workflow.IsReplaying(wctx) {
-		return
-	}
-	recordWorkflowMetrics(wInfo.WorkflowType.Name, wInfo.ParentWorkflowExecution == nil, info, err)
 }
 
 func (w Workflow[TConfig, TInput, TResult]) DoChild(wctx workflow.Context, ctx context.Context, input TInput) (TResult, error) {

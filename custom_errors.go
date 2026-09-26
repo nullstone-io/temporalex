@@ -9,55 +9,39 @@ type UnwrapAppErrorFunc func(appErr *temporal.ApplicationError) error
 type WrapErrorFunc func(err error) (error, bool)
 
 type customErrorRegistryItem struct {
+	Name       string
 	UnwrapFunc UnwrapAppErrorFunc
 	WrapFunc   WrapErrorFunc
-	// DefaultFailure classifies errors of this type when the type does not implement FailureClassifier itself
-	// (e.g. a type owned by another module). See Classify.
-	DefaultFailure *FailureInfo
 }
 
-var customErrorRegistry = map[string]customErrorRegistryItem{}
+// customErrorRegistry keeps registration order: WrapCustomError tries items in that order and the first
+// match wins, so a consumer decides precedence by registering first (a map would iterate randomly)
+var (
+	customErrorRegistry []customErrorRegistryItem
+	customErrorIndex    = map[string]int{}
+)
 
-// RegisterCustomError provides a centralized registry of custom errors that can be unwrapped using UnwrapCustomError
+// RegisterCustomError provides a centralized registry of custom errors that can be unwrapped using UnwrapCustomError.
+// Registering a type name again replaces the earlier registration in place.
 func RegisterCustomError(errType string, unwrapFn UnwrapAppErrorFunc, wrapFn WrapErrorFunc) {
-	customErrorRegistry[errType] = customErrorRegistryItem{
-		UnwrapFunc: unwrapFn,
-		WrapFunc:   wrapFn,
+	item := customErrorRegistryItem{Name: errType, UnwrapFunc: unwrapFn, WrapFunc: wrapFn}
+	if idx, ok := customErrorIndex[errType]; ok {
+		customErrorRegistry[idx] = item
+		return
 	}
+	customErrorIndex[errType] = len(customErrorRegistry)
+	customErrorRegistry = append(customErrorRegistry, item)
 }
 
 func RegisterCustomErrorDefault[T error](errType string) {
 	RegisterCustomError(errType, DefaultUnwrap[T], DefaultWrap[T])
 }
 
-// RegisterCustomErrorDefaultWithFailure is RegisterCustomErrorDefault for a type that cannot implement
-// FailureClassifier itself; every error of type T classifies as info unless it implements FailureClassifier
-func RegisterCustomErrorDefaultWithFailure[T error](errType string, info FailureInfo) {
-	customErrorRegistry[errType] = customErrorRegistryItem{
-		UnwrapFunc:     DefaultUnwrap[T],
-		WrapFunc:       DefaultWrap[T],
-		DefaultFailure: &info,
-	}
-}
-
-// registeredFailureInfo finds the default FailureInfo registered for the type of err, if any
-func registeredFailureInfo(err error) (FailureInfo, bool) {
-	for _, item := range customErrorRegistry {
-		if item.DefaultFailure == nil || item.WrapFunc == nil {
-			continue
-		}
-		if _, ok := item.WrapFunc(err); ok {
-			return *item.DefaultFailure, true
-		}
-	}
-	return FailureInfo{}, false
-}
-
 // UnwrapCustomError unwraps a temporal.ApplicationError into a detailed error
 // This is useful for serializing errors with details other than the error message
 func UnwrapCustomError(appErr *temporal.ApplicationError) error {
-	if item, ok := customErrorRegistry[appErr.Type()]; ok && item.UnwrapFunc != nil {
-		return item.UnwrapFunc(appErr)
+	if idx, ok := customErrorIndex[appErr.Type()]; ok && customErrorRegistry[idx].UnwrapFunc != nil {
+		return customErrorRegistry[idx].UnwrapFunc(appErr)
 	}
 	if cause := appErr.Unwrap(); cause != nil {
 		return cause
@@ -72,6 +56,9 @@ type ErrorWrapper interface {
 	WrapError() error
 }
 
+// WrapCustomError turns a registered error type (anywhere in err's chain) into an application error that carries
+// its details across the Temporal boundary. Registered types are tried in registration order; the first match wins.
+// An error that is already an application error is returned as is.
 func WrapCustomError(err error) error {
 	if err == nil {
 		return nil
@@ -82,16 +69,10 @@ func WrapCustomError(err error) error {
 	if ce, ok := err.(ErrorWrapper); ok {
 		return ce.WrapError()
 	}
-	// A classification wins over any registered type further down the chain: the registry is iterated in map
-	// order, and losing the classification would page for a failure that was positively identified as the user's
-	var classified *ClassifiedError
-	if errors.As(err, &classified) {
-		return temporal.NewApplicationErrorWithCause(ErrTypeClassifiedError, ErrTypeClassifiedError, classified, classified)
-	}
-	for name, item := range customErrorRegistry {
+	for _, item := range customErrorRegistry {
 		if item.WrapFunc != nil {
 			if finalErr, ok := item.WrapFunc(err); ok {
-				return temporal.NewApplicationErrorWithCause(name, name, finalErr, finalErr)
+				return temporal.NewApplicationErrorWithCause(item.Name, item.Name, finalErr, finalErr)
 			}
 		}
 	}

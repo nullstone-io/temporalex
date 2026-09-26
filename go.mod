@@ -11,9 +11,6 @@ require (
 	github.com/nexus-rpc/sdk-go v0.7.0
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/otel v1.46.0
-	go.opentelemetry.io/otel/metric v1.46.0
-	go.opentelemetry.io/otel/sdk v1.46.0
-	go.opentelemetry.io/otel/sdk/metric v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
 	go.temporal.io/api v1.63.6
 	go.temporal.io/sdk v1.49.0
@@ -71,6 +68,9 @@ require (
 	go.opentelemetry.io/contrib/detectors/gcp v1.44.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0 // indirect
+	go.opentelemetry.io/otel/metric v1.46.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
