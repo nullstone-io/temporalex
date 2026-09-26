@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
@@ -50,10 +51,25 @@ func (a Activity[TConfig, TInput, TResult]) run(cfg TConfig) func(ctx context.Co
 	return func(ctx context.Context, input TInput) (TResult, error) {
 		result, err := a.Run(ctx, cfg, input)
 		if a.PostRun != nil {
-			return a.PostRun(ctx, result, err)
+			result, err = a.PostRun(ctx, result, err)
+		}
+		if err != nil {
+			// Registered error types (including WithFailure classifications) only survive the Temporal boundary
+			// as application errors; wrapping here is idempotent for PostRuns that already did it
+			err = WrapCustomError(err)
+			a.recordFailure(ctx, err)
 		}
 		return result, err
 	}
+}
+
+// recordFailure classifies the activity's final error onto the tracing interceptor's `RunActivity:<name>` span
+// (which is the span in ctx, and the one that records the error) and counts it by class/category.
+// This is the single place an activity failure is classified; HandleResult sees the same error in the workflow.
+func (a Activity[TConfig, TInput, TResult]) recordFailure(ctx context.Context, err error) {
+	info, unwrapped := classify(err)
+	trace.SpanFromContext(ctx).SetAttributes(info.Attributes(errorTypeName(unwrapped))...)
+	recordActivityMetrics(ctx, a.Name, info)
 }
 
 func (a Activity[TConfig, TInput, TResult]) Do(wctx workflow.Context, input TInput) (TResult, error) {
