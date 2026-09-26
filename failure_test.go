@@ -71,6 +71,14 @@ func TestClassify(t *testing.T) {
 			err:  workflow.ErrDeadlineExceeded,
 			want: FailureInfo{Class: FailureClassTimeout},
 		},
+		"activity returned its cancelled context error": {
+			err:  fmt.Errorf("docker build cancelled: %w", context.Canceled),
+			want: FailureInfo{Class: FailureClassCancelled},
+		},
+		"activity returned its expired context error": {
+			err:  fmt.Errorf("timed out waiting for run to complete: %w", context.DeadlineExceeded),
+			want: FailureInfo{Class: FailureClassTimeout},
+		},
 		"panic": {
 			err:  temporal.NewApplicationErrorWithCause("panic", "PanicError", nil),
 			want: unknownFailure, // an application error named PanicError is not a Temporal panic

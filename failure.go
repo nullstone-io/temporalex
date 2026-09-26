@@ -1,6 +1,7 @@
 package temporalex
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -154,6 +155,14 @@ func classify(err error) (FailureInfo, error) {
 		return FailureInfo{Class: FailureClassTimeout}, unwrapped
 	case UnwrapErrTypePanic:
 		return FailureInfo{Class: FailureClassInternal, Category: CategoryPanic}, unwrapped
+	}
+	// An activity that returns its cancelled context's error (e.g. a docker build or rollout watch interrupted
+	// by a user cancel) was cancelled, not failed. This only holds in-process: across a Temporal boundary the
+	// chain is gone, and the workflow side reads the cancellation from Temporal itself.
+	if errors.Is(unwrapped, context.Canceled) {
+		return FailureInfo{Class: FailureClassCancelled}, unwrapped
+	} else if errors.Is(unwrapped, context.DeadlineExceeded) {
+		return FailureInfo{Class: FailureClassTimeout}, unwrapped
 	}
 
 	var classifier FailureClassifier
