@@ -115,3 +115,41 @@ func TestTypedFuture_AddToSelector(t *testing.T) {
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
 }
+
+// A signal to a child must wait until the server has created the child: ChildWorkflowExecution resolves at that
+// point for a child workflow future, and immediately for a future that tracks no child
+func TestTypedFuture_ChildWorkflowExecution(t *testing.T) {
+	suite := &testsuite.WorkflowTestSuite{}
+	env := suite.NewTestWorkflowEnvironment()
+
+	childWorkflow := func(wctx workflow.Context, input any) (any, error) {
+		_ = workflow.Sleep(wctx, time.Second)
+		return input, nil
+	}
+
+	mainWorkflow := func(wctx workflow.Context, input any) (any, error) {
+		child := NewFuture[any](workflow.ExecuteChildWorkflow(wctx, childWorkflow, nil), nil)
+		var execution workflow.Execution
+		if assert.NoError(t, child.ChildWorkflowExecution(wctx).Get(wctx, &execution)) {
+			assert.NotEmpty(t, execution.ID, "child execution id")
+		}
+		assert.False(t, child.IsReady(), "the child has started but not finished")
+
+		resolved := NewResolvedFuture[any](wctx, "resolved", nil)
+		assert.True(t, resolved.ChildWorkflowExecution(wctx).IsReady(), "a future without a child resolves at once")
+		assert.NoError(t, resolved.ChildWorkflowExecution(wctx).Get(wctx, nil))
+
+		timer := NewFuture[any](workflow.NewTimer(wctx, time.Second), nil)
+		assert.True(t, timer.ChildWorkflowExecution(wctx).IsReady(), "a timer future resolves at once")
+
+		_, err := child.GetTyped(wctx)
+		return input, err
+	}
+	env.RegisterWorkflow(mainWorkflow)
+	env.RegisterWorkflow(childWorkflow)
+
+	env.ExecuteWorkflow(mainWorkflow, struct{}{})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+}
