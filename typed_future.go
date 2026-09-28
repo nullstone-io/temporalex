@@ -28,6 +28,21 @@ func (f *TypedFuture[T]) IsReady() bool {
 	return f.baseFuture.IsReady()
 }
 
+// ChildWorkflowExecution resolves once the server has created the child workflow this future tracks
+// (or its start failed, in which case the returned future carries that error).
+// Signal or cancel a child only after this resolves: the start of a child and a signal to it are separate
+// commands that the server processes independently, so a signal sent as soon as the child is scheduled
+// can reach the server before the child exists and fail with "unknown external workflow execution".
+// A future that does not track a child workflow (NewResolvedFuture, a timer) resolves immediately.
+func (f *TypedFuture[T]) ChildWorkflowExecution(wctx workflow.Context) workflow.Future {
+	if cf, ok := f.baseFuture.(workflow.ChildWorkflowFuture); ok {
+		return cf.GetChildWorkflowExecution()
+	}
+	future, setter := workflow.NewFuture(wctx)
+	setter.Set(nil, nil)
+	return future
+}
+
 func (f *TypedFuture[T]) GetTyped(wctx workflow.Context) (T, error) {
 	var t T
 	f.Get(wctx, &t)
