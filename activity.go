@@ -50,9 +50,12 @@ func (a Activity[TConfig, TInput, TResult]) run(cfg TConfig) func(ctx context.Co
 	return func(ctx context.Context, input TInput) (TResult, error) {
 		result, err := a.Run(ctx, cfg, input)
 		if a.PostRun != nil {
-			return a.PostRun(ctx, result, err)
+			result, err = a.PostRun(ctx, result, err)
 		}
-		return result, err
+		notifyActivityObservers(ctx, a.Name, err)
+		// A registered error type only survives the Temporal boundary as an application error with details;
+		// wrapping here is idempotent for PostRuns that already did it
+		return result, WrapCustomError(err)
 	}
 }
 
